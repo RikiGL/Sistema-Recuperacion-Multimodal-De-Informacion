@@ -1,0 +1,8 @@
+streamlit
+pandas
+requests
+pillow
+chromadb
+sentence-transformers
+torch
+google-generativeai
