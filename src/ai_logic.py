@@ -4,7 +4,12 @@ import streamlit as st
 from google import genai
 from dotenv import load_dotenv
 
-# Configuración Inicial de la api key google gemini
+# --- CONFIGURACIÓN DE MODELO ---
+# Usamos Gemma 3 27B como pediste.
+# Si te da error 404, prueba quitando el "-it" final, aunque el estándar es con "-it".
+MODELO_ACTUAL = "gemma-3-27b-it"
+
+# Configuración Inicial
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 client = None
@@ -16,62 +21,100 @@ if api_key:
         st.error(f"Error conexión AI: {e}")
 
 def extraer_filtros_con_ia(consulta_usuario):
-    if not client: return {}
-    prompt = f"""
-    Eres un extractor de datos JSON. Analiza la frase: "{consulta_usuario}".
-    Devuelve SOLAMENTE un objeto JSON válido (sin markdown).
-    Campos: "color", "precio_max", "categoria", "marca".
-    Ejemplo: "rojo barato" -> {{"color": "rojo", "precio_max": "bajo"}}
     """
+    Extrae producto, color, categoría y marca usando Gemma 3.
+    """
+    if not client: return {}
+    
+    # Gemma necesita un prompt muy directo para JSON
+    prompt = f"""
+    Actúa como una API que convierte lenguaje natural a JSON.
+    Analiza la consulta: "{consulta_usuario}"
+    
+    Tu objetivo es extraer:
+    - "producto": El objeto que busca (tradúcelo a inglés si es posible, ej: "speaker", "keyboard").
+    - "marca": La marca (ej: Sony, Dell).
+    - "color": El color.
+    - "categoria": La categoría general.
+
+    REGLAS ESTRICTAS:
+    1. Responde ÚNICAMENTE con el objeto JSON.
+    2. No añadas texto introductorio ni explicaciones.
+    3. Si un campo no se menciona, omítelo.
+
+    Ejemplo Entrada: "Quiero un teclado gamer logitech"
+    Ejemplo Salida: {{"producto": "gaming keyboard", "marca": "Logitech"}}
+    """
+    
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash', 
+            model=MODELO_ACTUAL, 
             contents=prompt
         )
-        texto_limpio = response.text.replace("```json", "").replace("```", "").strip()
-        return json.loads(texto_limpio)
+        
+        # Limpieza agresiva porque Gemma a veces es conversacional
+        texto_limpio = response.text
+        texto_limpio = texto_limpio.replace("```json", "").replace("```", "").strip()
+        
+        # Truco: Si Gemma responde algo como "Aquí está el JSON: { ... }", nos quedamos solo con lo que está entre llaves
+        if "{" in texto_limpio: 
+            texto_limpio = "{" + texto_limpio.split("{", 1)[1]
+        if "}" in texto_limpio:
+            texto_limpio = texto_limpio.rsplit("}", 1)[0] + "}"
+            
+        diccionario = json.loads(texto_limpio)
+        # Limpiamos valores nulos
+        return {k: v for k, v in diccionario.items() if v}
     except:
         return {}
 
 def generar_respuesta_rag(consulta_usuario, productos, historial):
     if not client: return "Error: No hay conexión con la IA."
-    # Validacion anti alucionacion: Si lista productos esta vacia, informa al usaurio y no inventa la IA
+    
     if not productos:
-        return "Lo siento, actualmente no tengo productos en el catálogo que coincidan con tu búsqueda. ¿Deseas intentar con otros términos?"
+        return "Lo siento, no encontré productos que coincidan exactamente. Intenta con términos más generales."
 
     # Contexto enriquecedor
-    # Construimos el contexto usando 'rag_context' que ya incluye marca y opiniones reales
     contexto_prods = ""
     for p in productos:
         meta = p.get('metadata', {})
-        
-        # Extraemos el rag_context recomendado por el backend [cite: 45, 75]
-        rag_info = meta.get('rag_context', 'Sin descripción detallada.')
-        contexto_prods += f"- {meta.get('title', 'Producto')}: {rag_info}\n"
+        rag_info = meta.get('rag_context', 'Sin descripción.')
+        # Incluimos el score para que la IA sepa cuál es más relevante
+        contexto_prods += f"- {meta.get('title', 'Producto')} (Relevancia: {p.get('score', 0):.2f}): {rag_info}\n"
+    
+    # Historial corto
     contexto_chat = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in historial[-3:]])
 
-    # Prompt de sistema estricto
     prompt = f"""
-    Eres un asistente experto de Amazon. El sistema ya ha procesado la consulta del usuario
-    (que pudo ser texto o imagen) y ha recuperado los siguientes productos relevantes.
-    PRODUCTOS RECUPERADOS:
+    Eres un asistente de ventas experto.
+    
+    PRODUCTOS DISPONIBLES (Ordenados por relevancia):
     {contexto_prods}
 
-    HISTORIAL:
+    CONTEXTO DE LA CONVERSACIÓN:
     {contexto_chat}
-    USUARIO DICE: "{consulta_usuario}"
+    
+    CLIENTE PREGUNTA: "{consulta_usuario}"
 
     INSTRUCCIONES:
-
-    1. No menciones que no puedes ver imágenes. Actúa como si los PRODUCTOS RECUPERADOS fueran la respuesta directa a lo que el usuario necesita.
-    2. Si el usuario subió una imagen, simplemente di: "Basado en el producto de tu imagen, te recomiendo..."
-    3. Justifica usando los detalles técnicos y reseñas del contexto.
+    1. Recomienda el producto más relevante de la lista anterior.
+    2. Si el cliente pidió una característica específica (ej. "rojo") y uno de los productos la tiene, menciónalo.
+    3. Sé breve y profesional. No inventes productos que no estén en la lista.
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model=MODELO_ACTUAL,
             contents=prompt
         )
         return response.text
     except Exception as e:
-        return f"Error generando respuesta: {e}"
+        # Fallback de seguridad: Si Gemma 3 falla, intentamos con Flash Lite que tenías libre
+        try:
+            print(f"Fallo Gemma 3 ({e}), usando backup...")
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-lite-preview-02-05",
+                contents=prompt
+            )
+            return response.text
+        except:
+            return f"Error generando respuesta ({MODELO_ACTUAL}): {e}"
