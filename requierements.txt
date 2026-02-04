@@ -5,4 +5,7 @@ pillow
 chromadb
 sentence-transformers
 torch
-google-generativeai
+google-genai
+python-dotenv
+
+
