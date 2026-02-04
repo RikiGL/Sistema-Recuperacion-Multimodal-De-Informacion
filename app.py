@@ -5,7 +5,7 @@ from src.retrieval import SearchEngine
 
 # Configuracion titulo pagina
 st.set_page_config(page_title="E-commerce Multimodal", layout="wide")
-st.title("Asistente de Compras Inteligente")
+st.title("🛍️ Asistente de Compras Inteligente")
 
 # Cargar motor
 @st.cache_resource
@@ -28,8 +28,7 @@ with st.sidebar:
     st.header("Configuración")
     uploaded_img = st.file_uploader("Imagen de referencia", type=['jpg', 'png', 'jpeg'])
     
-    with st.expander("Debug Memoria"):
-        st.json(st.session_state.filtros)
+    # --- INTERFAZ LIMPIA: Se eliminó el debug de memoria JSON ---
     
     if st.button("Limpiar Sesión"):
         st.session_state.clear()
@@ -48,76 +47,85 @@ if prompt := st.chat_input("¿Qué buscas hoy?"):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Configuración Dinámica de Búsqueda (HÍBRIDO)
-    query_para_backend = prompt
-    umbral_corte = 0.15  # Umbral bajo para TEXTO (CLIP es estricto texto-imagen)
-    tipo_busqueda = "Texto"
+    # 1. Analizar Intención y Actualizar Memoria
+    nuevos_filtros = extraer_filtros_con_ia(prompt)
+    
+    # TRUCO DE MEMORIA: Solo actualizamos lo que sea nuevo, conservando lo viejo (ej. el producto "speaker")
+    if nuevos_filtros:
+        st.session_state.filtros.update(nuevos_filtros)
+    
+    # 2. Construir la Query Limpia basada en la Memoria Acumulada
+    # Juntamos: Producto + Marca + Color + Categoria
+    filtros_activos = st.session_state.filtros
+    palabras_clave = [
+        filtros_activos.get("producto"), # Esto es lo más importante (ej. "speaker")
+        filtros_activos.get("marca"),
+        filtros_activos.get("color"),
+        filtros_activos.get("categoria")
+    ]
+    # Filtramos nulos y creamos el string de búsqueda
+    query_limpia = " ".join([str(p) for p in palabras_clave if p])
+    
+    # Si la memoria está vacía (primer turno y falló extracción), usamos el prompt original
+    if not query_limpia:
+        query_limpia = prompt
+
+    # Configuración de búsqueda
+    query_para_backend = query_limpia
+    umbral_corte = 0.15 
+    tipo_busqueda = "Texto Inteligente"
 
     if uploaded_img:
         tipo_busqueda = "Imagen"
-        umbral_corte = 0.60  # Umbral ALTO para evitar alucinaciones
-        
-        # Guardamos la imagen temporalmente
+        umbral_corte = 0.60 
         with open("temp_query.jpg", "wb") as f:
             f.write(uploaded_img.getbuffer())
         query_para_backend = "temp_query.jpg"
-
-        # Advertencia de usabilidad
+        
         if len(prompt) > 5:
-            st.warning("Nota: Se está priorizando la búsqueda por IMAGEN. Si quieres buscar solo por texto, elimina la imagen de la barra lateral.")
+            st.warning("Nota: Priorizando imagen. Para buscar solo texto, elimina la imagen.")
 
-    # Procesamiento y Búsqueda
-    st.write(f"Procesando solicitud por **{tipo_busqueda}**...")
+    # Procesamiento
+    st.write(f"🔍 Buscando: **'{query_para_backend}'** ({tipo_busqueda})...")
     
-    # 1. Extraer filtros (NLU)
-    nuevos_filtros = extraer_filtros_con_ia(prompt)
-    st.session_state.filtros.update(nuevos_filtros)
-    
-    # Buscar en Backend
     try:
         resultados_crudos = engine.search(query=query_para_backend)
         resultados_filtrados = []
 
-        # Filtro individual
         if resultados_crudos:
-            # Mostrar el puntaje del mejor para tu referencia 
             top_score = resultados_crudos[0].get('score', 0)
-            st.caption(f"🔍 Debug: Similitud Top: **{top_score:.4f}** | Umbral: **{umbral_corte}**")
+            st.caption(f"Debug: Score Top: {top_score:.4f} | Umbral: {umbral_corte}")
 
-            # Bucle de Limpieza: Solo pasan los que superan el umbral
+            # Filtro individual
             for producto in resultados_crudos:
-                score_prod = producto.get('score', 0)
-                if score_prod >= umbral_corte:
+                if producto.get('score', 0) >= umbral_corte:
                     resultados_filtrados.append(producto)
 
-            # Si el primero es mucho mejor que el segundo (diferencia de 0.10), nos quedamos solo con el primero
+            # Filtro de Líder Solitario
             if len(resultados_filtrados) >= 2:
-                diferencia = resultados_filtrados[0]['score'] - resultados_filtrados[1]['score']
-                if diferencia > 0.10:
+                diff = resultados_filtrados[0]['score'] - resultados_filtrados[1]['score']
+                if diff > 0.10:
                     resultados_filtrados = [resultados_filtrados[0]]
-                    st.caption("Se filtraron resultados secundarios por baja relevancia comparativa.")
-
-            # Actualizamos la variable final
+            
             resultados = resultados_filtrados
-
-            # 4Verificar si quedó alguien vivo
+            
             if not resultados:
-                st.error(f"Resultados descartados. El mejor score ({top_score:.2f}) no fue suficiente o era confuso.")
+                st.error("Resultados descartados por baja relevancia.")
         else:
             resultados = []
 
         st.session_state.last_results = resultados
         if resultados:
-            st.success(f"¡{len(resultados)} resultados relevantes encontrados!")
+            st.success(f"¡{len(resultados)} encontrados!")
         else:
-            st.info("No se encontraron coincidencias suficientes en el catálogo.")
+            st.info("No hay coincidencias.")
 
     except Exception as e:
-        st.error(f"Fallo en búsqueda: {e}")
+        st.error(f"Error: {e}")
 
-    # Generar Respuesta (RAG)
+    # Generar Respuesta
     with st.chat_message("assistant"):
-        with st.spinner("Analizando productos..."):
+        with st.spinner("Pensando..."):
             respuesta = generar_respuesta_rag(
                 prompt, 
                 st.session_state.last_results, 
@@ -126,19 +134,16 @@ if prompt := st.chat_input("¿Qué buscas hoy?"):
             st.markdown(respuesta)
             st.session_state.messages.append({"role": "assistant", "content": respuesta})
 
-# RESULTADOS VISUALES 
+# Resultados Visuales
 if st.session_state.last_results:
     st.divider()
-    st.subheader("🔍 Productos Encontrados")
     cols = st.columns(3)
     for i, item in enumerate(st.session_state.last_results):
         meta = item['metadata']
         with cols[i % 3]:
             try:
-                # Mostramos la imagen del producto
                 st.image(meta['image_relative_path']) 
             except:
-                st.warning("Imagen no disponible")
-            
+                st.warning("Sin imagen")
             st.caption(f"**{meta.get('title', 'Producto')}**")
-            st.write(f"Relevancia: {item.get('score', 0):.2f}")
+            st.write(f"Rel: {item.get('score', 0):.2f}")
