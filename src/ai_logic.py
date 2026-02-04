@@ -4,8 +4,6 @@ import streamlit as st
 from google import genai
 from dotenv import load_dotenv
 
-
-
 # Configuración Inicial de la api key google gemini
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
@@ -16,8 +14,6 @@ if api_key:
         client = genai.Client(api_key=api_key)
     except Exception as e:
         st.error(f"Error conexión AI: {e}")
-
-
 
 def extraer_filtros_con_ia(consulta_usuario):
     if not client: return {}
@@ -53,8 +49,6 @@ def generar_respuesta_rag(consulta_usuario, productos, historial):
         rag_info = meta.get('rag_context', 'Sin descripción detallada.')
         contexto_prods += f"- {meta.get('title', 'Producto')}: {rag_info}\n"
     contexto_chat = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in historial[-3:]])
-
-
 
     # Prompt de sistema estricto
     prompt = f"""
