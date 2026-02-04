@@ -41,7 +41,7 @@ def run_etl():
 
     # 1. Carga de Datos
     dfs = []
-    print("🔄 Iniciando carga de datasets...")
+    print("Iniciando carga de datasets...")
     for filename in CSV_FILES:
         filepath = os.path.join(PROJECT_ROOT, filename)
         if os.path.exists(filepath):
@@ -50,7 +50,7 @@ def run_etl():
                 df_temp = pd.read_csv(filepath, dtype=str)
                 dfs.append(df_temp)
             except Exception as e:
-                print(f"   ⚠️ Error leyendo {filename}: {e}")
+                print(f"   Error leyendo {filename}: {e}")
 
     if not dfs: return
 
@@ -63,7 +63,7 @@ def run_etl():
     full_df['clean_id'] = full_df['asins'].apply(clean_asin)
     
     # 2. Pre-procesamiento de Reviews (Agregación Inteligente)
-    print("💬 Agrupando reseñas por producto...")
+    print("Agrupando reseñas por producto...")
     
     # Creamos un diccionario donde la clave es el ID y el valor es una LISTA de reviews
     # Tomamos 'reviews.text' y 'reviews.rating' y los combinamos
@@ -80,7 +80,7 @@ def run_etl():
     products = full_df.groupby('clean_id').first().reset_index()
     products = products[products['imageURLs'].notna() & (products['imageURLs'] != "nan")]
     
-    print(f"📦 Total productos únicos a procesar: {len(products)}")
+    print(f"Total productos únicos a procesar: {len(products)}")
     
     valid_products = []
     
@@ -156,11 +156,11 @@ def run_etl():
             })
             
             if len(valid_products) % 20 == 0:
-                print(f"   ✅ {len(valid_products)} listos...")
+                print(f"   {len(valid_products)} listos...")
 
     df_clean = pd.DataFrame(valid_products)
     df_clean.to_csv(PROCESSED_DATA, index=False)
-    print(f"\n🎉 ETL Finalizado. {len(df_clean)} productos guardados.")
+    print(f"\nETL Finalizado. {len(df_clean)} productos guardados.")
 
 if __name__ == "__main__":
     run_etl()

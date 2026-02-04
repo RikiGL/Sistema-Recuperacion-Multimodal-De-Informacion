@@ -23,7 +23,7 @@ COLLECTION_NAME = "amazon_products"
 MODEL_NAME = "clip-ViT-B-32"
 
 def process_and_index():
-    print(f"🚀 Iniciando proceso de indexación...")
+    print(f"Iniciando proceso de indexación...")
     
     # 1. Cargar el CSV limpio
     if not os.path.exists(CSV_PATH):
@@ -31,10 +31,10 @@ def process_and_index():
         return
 
     df = pd.read_csv(CSV_PATH)
-    print(f"📂 Dataset cargado: {len(df)} productos.")
+    print(f"Dataset cargado: {len(df)} productos.")
 
     # 2. Inicializar Modelo de Embeddings (Sentence-Transformers)
-    print(f"🧠 Cargando modelo {MODEL_NAME}...")
+    print(f"Cargando modelo {MODEL_NAME}...")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"   -> Usando dispositivo: {device}")
     
@@ -42,7 +42,7 @@ def process_and_index():
     model = SentenceTransformer(MODEL_NAME, device=device)
 
     # 3. Inicializar ChromaDB (Base de datos vectorial persistente)
-    print(f"💾 Conectando a ChromaDB en: {DB_PATH}")
+    print(f"Conectando a ChromaDB en: {DB_PATH}")
     client = chromadb.PersistentClient(path=DB_PATH)
     
     # Borrar colección anterior si existe (para empezar limpio)
@@ -75,7 +75,7 @@ def process_and_index():
             full_image_path = os.path.join(PROJECT_ROOT, relative_path)
             
             if not os.path.exists(full_image_path):
-                print(f"   ⚠️ Imagen no encontrada, saltando: {full_image_path}")
+                print(f"   Imagen no encontrada, saltando: {full_image_path}")
                 continue
                 
             # --- MAGIA MULTIMODAL ---
@@ -106,14 +106,14 @@ def process_and_index():
             
             # Imprimir progreso
             if successful_count % 50 == 0:
-                print(f"   ✅ {successful_count} productos procesados...")
+                print(f"   {successful_count} productos procesados...")
                 
         except Exception as e:
-            print(f"   ❌ Error procesando ID {row.get('id', 'unknown')}: {e}")
+            print(f"   Error procesando ID {row.get('id', 'unknown')}: {e}")
 
     # 5. Guardar en lote (Batch upsert) en ChromaDB
     if ids:
-        print(f"📥 Insertando {len(ids)} vectores en la base de datos...")
+        print(f"Insertando {len(ids)} vectores en la base de datos...")
         # Chroma tiene un límite de lote por defecto, a veces conviene partirlo si son miles
         # Para <10,000 suele aguantar de una, pero por seguridad lo hacemos en lotes pequeños si falla
         collection.add(
@@ -121,10 +121,10 @@ def process_and_index():
             embeddings=embeddings,
             metadatas=metadatas
         )
-        print("🎉 ¡Indexación completada con éxito!")
+        print("¡Indexación completada con éxito!")
         print(f"   Total indexado: {collection.count()} documentos.")
     else:
-        print("⚠️ No se generaron embeddings válidos.")
+        print("No se generaron embeddings válidos.")
 
 if __name__ == "__main__":
     process_and_index()

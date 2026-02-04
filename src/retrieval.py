@@ -19,7 +19,7 @@ class SearchEngine:
         """
         Carga los modelos y conecta a la BD una sola vez al iniciar la app.
         """
-        print("⚙️ Inicializando Motor de Búsqueda...")
+        print("Inicializando Motor de Búsqueda...")
         
         # 1. Detectar dispositivo (GPU/CPU)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -38,7 +38,7 @@ class SearchEngine:
         self.client = chromadb.PersistentClient(path=DB_PATH)
         self.collection = self.client.get_collection("amazon_products")
         
-        print("✅ Motor listo.")
+        print("Motor listo.")
 
     def search(self, query, top_k_retrieval=20, top_k_final=5):
         """
@@ -53,14 +53,14 @@ class SearchEngine:
         
         if os.path.exists(query) and query.lower().endswith(('.jpg', '.png', '.jpeg')):
             # Es una búsqueda IMAGEN-A-PRODUCTO
-            print(f"🔎 Buscando por imagen: {query}")
+            print(f"Buscando por imagen: {query}")
             is_image_query = True
             image = Image.open(query)
             query_emb = self.embedder.encode(image).tolist()
             query_content = "Image Query" # Placeholder para el reranker visual si fuera necesario
         else:
             # Es una búsqueda TEXTO-A-PRODUCTO
-            print(f"🔎 Buscando por texto: '{query}'")
+            print(f"Buscando por texto: '{query}'")
             query_emb = self.embedder.encode(query).tolist()
             query_content = query
 
@@ -142,5 +142,5 @@ if __name__ == "__main__":
             print(f"{i+1}. [Score: {r['score']:.4f}] {r['metadata']['title']}")
             print(f"   Archivo: {r['metadata']['image_relative_path']}")
     else:
-        print(f"❌ No encontré la imagen de prueba: {test_image_path}")
+        print(f"No encontré la imagen de prueba: {test_image_path}")
         print("Revisa la carpeta data/images y pon un nombre de archivo real.")
